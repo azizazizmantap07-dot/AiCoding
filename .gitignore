@@ -1,0 +1,43 @@
+# Wajib: SDK path lokal, jangan pernah commit — GitHub Actions sudah punya
+# Android SDK preinstalled (lihat catatan CI di bawah), tidak butuh file ini.
+local.properties
+
+# Build output
+*/build/
+build/
+.gradle/
+captures/
+.cxx/
+out/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+.navigation/
+.DS_Store
+
+# Keystore & signing (jaga-jaga untuk tahap akhir yang butuh signing config)
+*.jks
+*.keystore
+keystore.properties
+
+# Log & profiling
+*.log
+*.hprof
+
+# Jangan pernah commit API key / kredensial dalam bentuk apapun,
+# termasuk file konfigurasi lokal contoh yang berisi key sungguhan.
+*.env
+secrets.properties
+apikey.txt
+
+# Release signing — jangan commit ke repo publik
+keystore/*.jks
+keystore/keystore.properties
+keystore/*.base64.txt
+
+# Seluruh folder keystore (termasuk KEYSTORE-INFO.txt yang berisi password polos)
+keystore/
+KEYSTORE-INFO.txt
