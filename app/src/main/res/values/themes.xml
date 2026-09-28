@@ -1,0 +1,10 @@
+<resources>
+    <!-- Parent DayNight supaya status bar / window ikut light-dark sistem
+         sebelum Compose setContent. Warna konten dari AiCoderTheme (M3). -->
+    <style name="Theme.AiCoder" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">#FFF7FBF2</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

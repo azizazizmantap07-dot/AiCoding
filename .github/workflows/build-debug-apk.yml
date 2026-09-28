@@ -1,0 +1,102 @@
+name: Build Debug APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Cegah dua run bareng berebut cache/artifact untuk push beruntun di branch yang sama
+concurrency:
+  group: build-debug-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build assembleDebug
+    runs-on: ubuntu-latest
+    # Wajib supaya job ini boleh commit & push balik gradlew yang di-generate ke branch main
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+        with:
+          # token default cukup untuk push balik ke branch yang sama di repo ini
+          persist-credentials: true
+
+      # JDK 17 wajib untuk Android Gradle Plugin 8.x.
+      # setup-java v5 dipakai sesuai permintaan (v4 sering memunculkan warning deprecated
+      # terkait Node.js 16 runtime di action lama).
+      - name: Setup JDK 17 (Temurin)
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Cache Gradle aktif: dependency & build cache dipakai ulang antar run supaya
+      # build lebih cepat. Kalau curiga cache basi, jalankan ulang dengan cache dibersihkan
+      # dari tab Actions > Caches.
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-disabled: false
+
+      # AGP 8.13 butuh Gradle >= 8.13. Wrapper lama di repo (8.9) TIDAK cukup, jadi step ini
+      # memastikan versinya benar, baik wrapper sudah ada maupun belum:
+      #  - belum ada  -> generate di folder temporer berisi settings.gradle kosong (Gradle 9
+      #                  bawaan runner menolak folder tanpa build; dan proyek ini tidak ikut
+      #                  di-configure), lalu salin ke repo. Normalnya wrapper sudah ikut di repo.
+      #  - sudah ada  -> ganti distributionUrl bila bukan 8.14.3.
+      # Tidak commit/push di sini (push ke tag ditolak pada workflow release). Commit
+      # gradle/wrapper/gradle-wrapper.properties dari zip agar permanen.
+      - name: Generate Gradle Wrapper (jika belum ada)
+        id: gen_wrapper
+        run: |
+          set -e
+          if [ ! -f "./gradlew" ] || [ ! -f "./gradle/wrapper/gradle-wrapper.jar" ]; then
+            tmp="$(mktemp -d)"
+            ( cd "$tmp" && touch settings.gradle && gradle wrapper --gradle-version 8.14.3 --distribution-type bin )
+            mkdir -p gradle/wrapper
+            cp "$tmp/gradlew" "$tmp/gradlew.bat" .
+            cp "$tmp/gradle/wrapper/gradle-wrapper.jar" gradle/wrapper/
+            cp "$tmp/gradle/wrapper/gradle-wrapper.properties" gradle/wrapper/
+            echo "Wrapper baru dibuat (8.14.3)."
+          fi
+          props=gradle/wrapper/gradle-wrapper.properties
+          if ! grep -q "gradle-8.14.3-bin.zip" "$props"; then
+            echo "Wrapper lama terdeteksi, naikkan ke 8.14.3:"; grep distributionUrl "$props" || true
+            sed -i '/^distributionSha256Sum=/d' "$props"
+            sed -i 's#^distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14.3-bin.zip#' "$props"
+            echo "distributionSha256Sum=bd71102213493060956ec229d946beee57158dbd89d0e62b91bca0fa2c5f3531" >> "$props"
+          fi
+          chmod +x ./gradlew
+          grep -E "distributionUrl|distributionSha256Sum" "$props"
+          echo "generated=false" >> "$GITHUB_OUTPUT"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      # Build eksplisit dijalankan terpisah (bukan disatukan ke langkah lain) supaya
+      # kalau gagal compile, tab Actions langsung menunjuk ke step ini dengan jelas
+      # (bukan silent-fail atau tertutup step lain).
+      - name: Build debug APK (assembleDebug)
+        run: ./gradlew assembleDebug --stacktrace
+
+      # Nama artifact memakai versionName dari app/build.gradle.kts + SHA supaya
+      # sinkron dengan rilis (bukan hardcode v1.1 yang sudah usang).
+      - name: Resolve versionName
+        id: ver
+        run: |
+          VERSION=$(grep -E 'versionName\s*=' app/build.gradle.kts | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK artifact
+        if: success()
+        uses: actions/upload-artifact@v6
+        with:
+          name: app-debug-v${{ steps.ver.outputs.version }}-${{ github.sha }}
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
